@@ -34,5 +34,29 @@ namespace Autozip.Properties {
                 this["ToolsPath"] = value;
             }
         }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("")]
+        public string KeystorePath {
+            get {
+                return ((string)(this["KeystorePath"]));
+            }
+            set {
+                this["KeystorePath"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("False")]
+        public bool HasTools {
+            get {
+                return ((bool)(this["HasTools"]));
+            }
+            set {
+                this["HasTools"] = value;
+            }
+        }
     }
 }

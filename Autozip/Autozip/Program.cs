@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
+using System.Reflection;
 using Microsoft.WindowsAPICodePack.Dialogs;
 
 namespace Autozip
@@ -10,101 +12,128 @@ namespace Autozip
         [STAThread]
         static void Main(string[] args)
         {
-            while (!Initialization())
+            if (!Properties.Settings.Default.HasTools)
             {
-                Console.WriteLine("Error, retry?  <Y/N>:  ");
-                string retry = Console.ReadLine();
-
-                if (retry != "Y" || retry != "y")
+                Console.WriteLine("Do you have a keystore file downloaded and the android sdk build tools installed? <Y/N>:  ");
+                string response = Console.ReadLine();
+                
+                if (response == "Y" || response == "y")
                 {
+                    Properties.Settings.Default.HasTools = true;
+                    Properties.Settings.Default.Save();
+                }
+                else
+                {
+                    Console.WriteLine(response != "y");
+                    Console.WriteLine("Manually signing an apk requires these, please correct and re-run. Press enter to continue.");
+                    Console.ReadLine();
                     Environment.Exit(1);
                 }
             }
 
-            string apk_unsigned = "";
-            string apk_signed = "";
-            string keystore = "";
+            string inputFile = "";
+            string outputFile = "";
 
-            string zipalign = Properties.Settings.Default.ToolsPath + @"\zipalign.exe";
-            string apksigner = Properties.Settings.Default.ToolsPath + @"\apksigner.bat";
-
-            CommonOpenFileDialog dialog = new CommonOpenFileDialog
+            if (args.Length > 0)
             {
-                IsFolderPicker = false,
-                Title = "Choose location of unsigned apk",
-                DefaultExtension = ".apk",
-                InitialDirectory = @"C:\"
-            };
+                FileInfo apkInfo = new FileInfo(args[0]);
 
-            dialog.Filters.Add(new CommonFileDialogFilter("APK Files", "*.apk"));
+                inputFile = apkInfo.FullName;
+                outputFile = apkInfo.DirectoryName + @"\" + apkInfo.Name.Substring(0, apkInfo.Name.Length - 4) + @"_signed.apk";
 
-            CommonFileDialogResult res = dialog.ShowDialog();
-
-            if (res == CommonFileDialogResult.Ok)
-            {
-                if (!string.IsNullOrEmpty(dialog.FileName) && !string.IsNullOrWhiteSpace(dialog.FileName))
+                if (File.Exists(outputFile))
                 {
-                    apk_unsigned = dialog.FileName;
+                    try
+                    {
+                        File.Delete(outputFile);
+                    }
+                    catch
+                    {
+                        Console.WriteLine("Unable to delete previous signed apk, please delete and re-run.");
+                        Environment.Exit(1);
+                    }
                 }
-            }
-            else
-            {
-                Environment.Exit(1);
-            }
 
-            dialog = new CommonOpenFileDialog
-            {
-                IsFolderPicker = false,
-                DefaultExtension = ".keystore",
-                Title = "Choose location of keystore file.",
-                InitialDirectory = @"C:\"
-            };
-
-            dialog.Filters.Add(new CommonFileDialogFilter("KEYSTORE Files", "*.keystore"));
-
-            res = dialog.ShowDialog();
-
-            if (res == CommonFileDialogResult.Ok)
-            {
-                if (!string.IsNullOrEmpty(dialog.FileName) && !string.IsNullOrWhiteSpace(dialog.FileName))
+                while (!Initialization())
                 {
-                    keystore = dialog.FileName;
+                    Console.WriteLine("Error, retry?  <Y/N>:  ");
+                    string retry = Console.ReadLine();
+
+                    if (retry != "Y" || retry != "y")
+                    {
+                        Environment.Exit(1);
+                    }
                 }
-            }
-            else
-            {
-                Environment.Exit(1);
-            }
 
-            dialog = new CommonOpenFileDialog
-            {
-                IsFolderPicker = false,
-                Title = "Choose where to save signed apk.",
-                DefaultExtension = ".apk",
-                InitialDirectory = @"C:\"
-            };
+                string zipalign = Properties.Settings.Default.ToolsPath + @"\zipalign.exe";
+                string apksigner = Properties.Settings.Default.ToolsPath + @"\apksigner.bat";
 
-            dialog.Filters.Add(new CommonFileDialogFilter("APK Files", "*.apk"));
-
-            res = dialog.ShowDialog();
-
-            if (res == CommonFileDialogResult.Ok)
-            {
-                if (!string.IsNullOrEmpty(dialog.FileName) && !string.IsNullOrWhiteSpace(dialog.FileName))
+                if (Properties.Settings.Default.KeystorePath == "")
                 {
-                    apk_signed = dialog.FileName;
+                    CommonOpenFileDialog dialog = new CommonOpenFileDialog
+                    {
+                        IsFolderPicker = false,
+                        DefaultExtension = ".keystore",
+                        Title = "Choose location of keystore file.",
+                        InitialDirectory = @"C:\"
+                    };
+
+                    dialog.Filters.Add(new CommonFileDialogFilter("KEYSTORE Files", "*.keystore"));
+
+                    CommonFileDialogResult res = dialog.ShowDialog();
+
+                    if (res == CommonFileDialogResult.Ok)
+                    {
+                        if (!string.IsNullOrEmpty(dialog.FileName) && !string.IsNullOrWhiteSpace(dialog.FileName))
+                        {
+                            if(File.Exists(dialog.FileName))
+                            {
+                                Properties.Settings.Default.KeystorePath = dialog.FileName;
+                                Properties.Settings.Default.Save();
+                            }
+                            else
+                            {
+                                Console.WriteLine("Invalid keystore location, please re-run. Press enter to continue.");
+                                Console.ReadLine();
+                            }
+                        }
+                    }
+                    else
+                    {
+                        Environment.Exit(1);
+                    }
                 }
-            }
-            else
-            {
-                Environment.Exit(1);
-            }
+                
+                string zipArgs = "-f -v 4 " + inputFile + " " + outputFile;
+                string signArgs = "sign --ks-pass pass:Password@001 --ks \"" + Properties.Settings.Default.KeystorePath + "\" \"" + outputFile + "\"";
+                
+                Process proc = new Process
+                {
+                    StartInfo = new ProcessStartInfo
+                    {
+                        FileName = zipalign,
+                        Arguments = zipArgs,
+                        ErrorDialog = true,
+                        WindowStyle = ProcessWindowStyle.Normal
+                    }
+                };
+                
+                proc.Start();
+                proc.WaitForExit();
 
-            string zipArgs = "-f -v 4 " + apk_unsigned + " " + apk_signed;
-            string signArgs = "sign --ks " + keystore + " " + apk_signed;
-
-            System.Diagnostics.Process.Start(zipalign, zipArgs).WaitForExit();
-            System.Diagnostics.Process.Start(apksigner, signArgs).WaitForExit();
+                proc.StartInfo = new ProcessStartInfo
+                {
+                    UseShellExecute = false,
+                    FileName = apksigner,
+                    Arguments = signArgs,
+                    ErrorDialog = true,
+                    RedirectStandardError = true,
+                    WindowStyle = ProcessWindowStyle.Normal
+                };
+                
+                proc.Start();
+                proc.WaitForExit();
+            }
         }
 
         private static bool Initialization()
@@ -126,9 +155,12 @@ namespace Autozip
                 CommonOpenFileDialog dialog = new CommonOpenFileDialog
                 {
                     IsFolderPicker = true,
-                    Title = "Choose location of android tools",
+                    Title = "Choose location of android sdk build-tools",
                     InitialDirectory = initialDir
                 };
+
+                Console.WriteLine("The build tools will be under build-tools.\nFrom there you can use any version of the sdk with a minimum of 26.");
+                Console.WriteLine("Just select that version's folder and click ok.");
 
                 CommonFileDialogResult res = dialog.ShowDialog();
 
